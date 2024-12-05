@@ -1,9 +1,18 @@
-require(DESeq2)
-require(tidyverse)
+# -------------------------------------------------------------------------
+# 5 Exploratory data analysis
+# -------------------------------------------------------------------------
 
-# data preparation
+# With the help of the DESeq2 Tutorial from Ashley Valentina Schwartz
+# https://ashleyschwartz.com/posts/2023/05/deseq2-tutorial
+
+library(DESeq2)
+library(tidyverse)
+
+# Data preparation --------------------------------------------------------
+
 gene_counts <- 'gene_counts.txt'
 
+# Reformatting of the table to correspond to the format expected by DESeq2 
 count_data <- read.table(gene_counts, header=TRUE, stringsAsFactors=FALSE)
 count_data <- count_data[, -c(2:6)]
 
@@ -14,50 +23,56 @@ rownames(count_data) <- NULL
 rownames(count_data) <- count_data$Geneid
 count_data <- count_data[, -which(names(count_data) == "Geneid")]
 
+# Formatting a meta data table
 meta_data <- data.frame(read.csv2('metadata.csv', header=TRUE))
-
-# samples_old <- colnames(count_data)
-# samples_new <- setNames(meta_data$Condition, meta_data$Sample)
-# colnames(count_data) <- samples_new[samples_old]
-
 meta_data <- meta_data %>% remove_rownames %>% column_to_rownames(var="Sample")
 
+# Checking if the name of the columns in the counts matrix is the same as the names in the meta data file
 all(colnames(count_data) %in% rownames(meta_data))
 all(colnames(count_data) == rownames(meta_data))
 
-# set up DESeq objects
+# Set up DESeq objects ----------------------------------------------------
+
 dds <- DESeqDataSetFromMatrix(countData = count_data, 
                               colData = meta_data, 
                               design = ~Condition)
 dds
+estimateSizeFactors(dds)
 
-# pre-filtering
-# keep <- rowSums(counts(dds)) >= 10
-# dds <- dds[keep,]
-# dds
+# Differential expression -------------------------------------------------
 
-# differential expression
 dds <- DESeq(dds)
 res <- results(dds)
 res
 
 summary(res)
-sum(res$padj < 0.1, na.rm=TRUE) #exact number of adjusted p-values that are <0.01
+# Exact number of adjusted p-values that are <0.1
+sum(res$padj < 0.1, na.rm=TRUE) 
 
+# Exact number of adjusted p-values that are <0.05
 res05 <- results(dds, alpha=0.05)
 summary(res05)
 sum(res$padj < 0.05, na.rm=TRUE)
 
-# results visualisation
-# convert results data to basic dataframe
+# -------------------------------------------------------------------------
+# 5.1 Visualising results
+# -------------------------------------------------------------------------
+
+library(ggrepel)
+library(pheatmap)
+
+# conversion of the data to a basic data frame
 data <- data.frame(res)
 head(data)
 
-# PCA
+# PCA plot ----------------------------------------------------------------
+
 rld <- rlog(dds, blind = TRUE)
 plotPCA(rld, intgroup=c("Condition", "Organ"))
 
-# volcano plot
+# Volcano plots -----------------------------------------------------------
+
+# Add an additional column that identifies a gene as upregulated, downregulated, or unchanged
 data <- data %>%
   mutate(
     Expression = case_when(log2FoldChange >= log(1) & padj <= 0.05 ~ "Up-regulated",
@@ -66,8 +81,9 @@ data <- data %>%
   )
 head(data)
 
+# Getting the top 10 most up- or downregulated genes
 top <- 10
-# we are getting the top 10 up and down regulated genes by filtering the column Up-regulated and Down-regulated and sorting by the adjusted p-value. 
+
 top_genes <- bind_rows(
   data %>%
     filter(Expression == 'Up-regulated') %>%
@@ -78,12 +94,14 @@ top_genes <- bind_rows(
     arrange(padj, desc(abs(log2FoldChange))) %>%
     head(top)
 )
-# create a datframe just holding the top 10 genes
+
+# Dataframe with the top 10 genes
 Top_Hits = head(arrange(data,pvalue),10)
 Top_Hits
 
 data$label = if_else(rownames(data) %in% rownames(Top_Hits), rownames(data), "")
-# basic plot
+
+# Basic plot
 p1 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_point( size = 2/5) +
   xlab(expression("log"[2]*"FC")) +
@@ -91,7 +109,7 @@ p1 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   xlim(-4.5, 4.5)
 p1
 
-# basic plot with line + red for p < 0.05
+# Basic plot with line + red for p < 0.05
 p2 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_point(aes(color = Expression), size = 2/5) +
   #geom_hline(yintercept= -log10(0.05), linetype="dashed", linewidth = .4) +
@@ -102,8 +120,7 @@ p2 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   theme(legend.position = "none")
 p2
 
-# with labels for top 10 sig overall
-library(ggrepel)
+# With labels for top 10 sig overall
 p3 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_point(aes(color = Expression), size = 2/5) +
   # geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
@@ -115,7 +132,7 @@ p3 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_text_repel(aes(label = label), size = 2.5)
 p3
 
-# plot with up/down
+# Plot with up/down
 p4 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_point(aes(color = Expression), size = 2/5) +
   #geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
@@ -126,7 +143,6 @@ p4 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   #ylim(0, 50)
 p4
 
-require(ggrepel)
 p5 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_point(aes(color = Expression), size = 2/5) +
   # geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
@@ -137,10 +153,14 @@ p5 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
   geom_text_repel(aes(label = label), size = 2.5)
 p5
 
-# Heatmap
-library("pheatmap")
+# Heatmap -----------------------------------------------------------------
+
 select <- order(rowMeans(count(dds,normalized=TRUE)),
                 decreasing=TRUE)[1:20]
 df <- as.data.frame(colData(dds)[,c("Condition","Organ")])
 pheatmap(assay(dds)[select,], cluster_rows=FALSE, show_rownames=FALSE,
          cluster_cols=FALSE, annotation_col=df)
+
+# -------------------------------------------------------------------------
+# 6 Differential expression analysis
+# -------------------------------------------------------------------------
