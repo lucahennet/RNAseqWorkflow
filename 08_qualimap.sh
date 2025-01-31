@@ -7,7 +7,6 @@
 #SBATCH --partition=pibu_el8
 #SBATCH --output=/data/users/lhennet/RNAseqWorkflow/log/qualimap_%J.out
 #SBATCH --error=/data/users/lhennet/RNAseqWorkflow/log/qualimap_%J.err
-#SBATCH --array=1-16
 
 # setup of the environment and the directories
 WORKDIR="/data/users/${USER}/RNAseqWorkflow"
@@ -15,8 +14,6 @@ LOGDIR="$WORKDIR/log"
 OUTDIR="$WORKDIR/qualimap"
 SAMPLELIST="$WORKDIR/metadata/samplelist.tsv"
 REFGENOME="$WORKDIR/reference_genome"
-CONTAINER_PATH="/containers/apptainer/multiqc-1.19.sif"
-MULTIQC_OUTDIR="$WORKDIR/multiqc_qualimap"
 
 mkdir -p $OUTDIR
 mkdir -p $LOGDIR
@@ -47,8 +44,3 @@ qualimap rnaseq \
     -outformat "HTML" \
     -p strand-specific-reverse \
     --java-mem-size=40G >& "$OUTDIR/${SAMPLE}_qualimap.log"
-
-# Generate MultiQC report after all jobs are done
-if [ "$SLURM_ARRAY_TASK_ID" -eq 16 ]; then
-    apptainer exec $CONTAINER_PATH multiqc $OUTDIR -o $MULTIQC_OUTDIR
-fi
